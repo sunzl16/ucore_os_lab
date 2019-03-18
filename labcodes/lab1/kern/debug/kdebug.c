@@ -260,8 +260,8 @@ read_eip(void) {
  *
  * The x86 stack pointer, namely esp, points to the lowest location on the stack
  * that is currently in use. Everything below that location in stack is free. Pushing
- * a value onto the stack will invole decreasing the stack pointer and then writing
- * the value to the place that stack pointer pointes to. And popping a value do the
+ * a value onto the stack will involve decreasing the stack pointer and then writing
+ * the value to the place that stack pointer points to. And popping a value do the
  * opposite.
  *
  * The ebp (base pointer) register, in contrast, is associated with the stack
@@ -302,5 +302,24 @@ print_stackframe(void) {
       *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
       *                   the calling funciton's ebp = ss:[ebp]
       */
+	uint32_t ebp = read_ebp();
+	uint32_t eip = read_eip();
+
+	int i, j;
+	for(i = 0; ebp != 0 && i < STACKFRAME_DEPTH; i++) {
+		cprintf("ebp:0x%08x eip:0x%08x args:", ebp, eip);
+		uint32_t *arg = (uint32_t *)ebp + 2;
+		for(j = 0; ebp != 0 && j < 4; j ++) {
+			cprintf("0x%08x ", arg[j]);
+		}
+		cprintf("\n");
+		print_debuginfo(eip-1);
+		eip = ((uint32_t *)ebp)[1];
+		ebp = ((uint32_t *)ebp)[0];
+	}
+	/*
+	ebp:0x00007b28 eip:0x00100992 args:0x00010094 0x00010094 0x00007b58 0x00100096
+	    kern/debug/kdebug.c:305: print_stackframe+22
+	*/
 }
 
