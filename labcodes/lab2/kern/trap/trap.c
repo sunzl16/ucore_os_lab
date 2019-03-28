@@ -46,14 +46,19 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+
 	extern const uintptr_t __vectors[];
 	int i;
 	for(i = 0; i < 256; i++) {
-		//SETGATE(idt[i], 0, , __vectors[i], 0);
-        SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+		if(i < 32) {
+			SETGATE(idt[i], 1, GD_KTEXT, __vectors[i], DPL_KERNEL);
+		}
+		else {
+			SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+		}
 	}
-
-    SETGATE(idt[T_SYSCALL], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+	SETGATE(idt[T_SYSCALL], 0, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+    SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
 	lidt(&idt_pd);
 }
 
@@ -168,11 +173,41 @@ trap_dispatch(struct trapframe *tf) {
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
         cprintf("kbd [%03d] %c\n", c, c);
+        if(c == '0') {
+        	if(tf->tf_cs != KERNEL_CS) {
+            	cprintf("+++ Typing number 0: SUCCESSFULLY! now switch to kernel mode +++\n");
+        		tf->tf_cs = KERNEL_CS;
+        		tf->tf_ds = tf->tf_ss = tf->tf_es = KERNEL_DS;
+        	}
+        	else {
+        		cprintf("+++ Typing number 0: SORRY! you are being kernel mode now +++\n");
+        	}
+        }
+        else if(c == '3') {
+        	if(tf->tf_cs != USER_CS) {
+        		cprintf("+++ Typing number 3: SUCCESSFULLY! now switch to user mode +++\n");
+        		tf->tf_cs = USER_CS;
+        		tf->tf_ds = tf->tf_ss = tf->tf_es = USER_DS;
+        		tf->tf_eflags |= FL_IOPL_MASK;
+        	}
+        	else {
+        		cprintf("+++ Typing number 3: SORRY! you are being user mode now +++\n");
+        	}
+        }
         break;
     //LAB1 CHALLENGE 1 : 2016011384 you should modify below codes.
     case T_SWITCH_TOU:
+    	if(tf->tf_cs != USER_CS) {
+       		tf->tf_cs = USER_CS;
+       		tf->tf_ds = tf->tf_ss = tf->tf_es = USER_DS;
+       		tf->tf_eflags |= FL_IOPL_MASK;
+       	}
+       	break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+       	if(tf->tf_cs != KERNEL_CS) {
+       		tf->tf_cs = KERNEL_CS;
+       		tf->tf_ds = tf->tf_ss = tf->tf_es = KERNEL_DS;
+       	}
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
@@ -181,7 +216,9 @@ trap_dispatch(struct trapframe *tf) {
     default:
         // in kernel, it must be a mistake
         if ((tf->tf_cs & 3) == 0) {
-            print_trapframe(tf);
+            cprintf("tf->tf_trapno = %0x \n", tf->tf_trapno);
+            cprintf("tf->tf_cs = %0x \n", tf->tf_cs);
+        	print_trapframe(tf);
             panic("unexpected trap in kernel.\n");
         }
     }

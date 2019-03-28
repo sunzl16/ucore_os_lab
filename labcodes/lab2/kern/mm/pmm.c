@@ -20,7 +20,7 @@
  *   - add enough information to the TSS in memory as needed
  *   - load the TR register with a segment selector for that segment
  *
- * There are several fileds in TSS for specifying the new stack pointer when a
+ * There are several fields in TSS for specifying the new stack pointer when a
  * privilege level change happens. But only the fields SS0 and ESP0 are useful
  * in our os kernel.
  *
@@ -326,7 +326,7 @@ pmm_init(void) {
 // return vaule: the kernel virtual address of this pte
 pte_t *
 get_pte(pde_t *pgdir, uintptr_t la, bool create) {
-    /* LAB2 EXERCISE 2: YOUR CODE
+    /* LAB2 EXERCISE 2: 2016011384
      *
      * If you need to visit a physical address, please use KADDR()
      * please read pmm.h for useful macros
@@ -344,7 +344,7 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *                                       to the specified value c.
      * DEFINEs:
      *   PTE_P           0x001                   // page table/directory entry flags bit : Present
-     *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
+     *   PTE_W           0x002                   // page table/directory entry flags bit : Writable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
 #if 0
@@ -359,6 +359,32 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+    pde_t *pdep = pgdir + PDX(la);
+    if( ((*pdep)&1) != PTE_P) {
+     	if(!create) return NULL;
+    	struct Page * p = alloc_pages(1);
+    	if(p == NULL) return NULL;
+    	set_page_ref(p, 1);
+   		uintptr_t pa = page2pa(p);
+   		//cprintf("p = %0x , pa = %0x , KADDR(pa) = %0x\n", p, pa, KADDR(pa));
+   		memset(KADDR(pa), 0, PGSIZE);
+   		*pdep = ((PPN(pa) << PTXSHIFT) | PTE_U | PTE_W | PTE_P);
+    }
+    return (pte_t *)KADDR(PDE_ADDR(*pdep)) + PTX(la);
+    /*
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PTE_P)) {
+        struct Page *page;
+        if (!create || (page = alloc_page()) == NULL) {
+            return NULL;
+        }
+        set_page_ref(page, 1);
+        uintptr_t pa = page2pa(page);
+        memset(KADDR(pa), 0, PGSIZE);
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
+    */
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -379,7 +405,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //note: PT is changed, so the TLB need to be invalidate 
 static inline void
 page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
-    /* LAB2 EXERCISE 3: YOUR CODE
+    /* LAB2 EXERCISE 3: 2016011384
      *
      * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
      *
@@ -404,6 +430,14 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+    if( ((*ptep)&1) == PTE_P) {
+    	struct Page * p = pte2page(*ptep);
+    	if( page_ref_dec(p) == 0 ) {
+        	free_page(p);
+    	}
+    	*ptep = 0;
+    	tlb_invalidate(pgdir, la);
+    }
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte
