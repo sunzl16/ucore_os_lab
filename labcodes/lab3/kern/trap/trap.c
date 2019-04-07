@@ -48,6 +48,20 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+
+	extern const uintptr_t __vectors[];
+	int i;
+	for(i = 0; i < 256; i++) {
+		if(i < 32) {
+			SETGATE(idt[i], 1, GD_KTEXT, __vectors[i], DPL_KERNEL);
+		}
+		else {
+			SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+		}
+	}
+	SETGATE(idt[T_SYSCALL], 0, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+    SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+	lidt(&idt_pd);
 }
 
 static const char *
@@ -186,7 +200,11 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
-        break;
+		ticks ++;
+		if(ticks % TICK_NUM == 0) {
+			print_ticks();
+		}
+		break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
         cprintf("serial [%03d] %c\n", c, c);
@@ -194,11 +212,41 @@ trap_dispatch(struct trapframe *tf) {
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
         cprintf("kbd [%03d] %c\n", c, c);
+        if(c == '0') {
+        	if(tf->tf_cs != KERNEL_CS) {
+            	cprintf("+++ Typing number 0: SUCCESSFULLY! now switch to kernel mode +++\n");
+        		tf->tf_cs = KERNEL_CS;
+        		tf->tf_ds = tf->tf_ss = tf->tf_es = KERNEL_DS;
+        	}
+        	else {
+        		cprintf("+++ Typing number 0: SORRY! you are being kernel mode now +++\n");
+        	}
+        }
+        else if(c == '3') {
+        	if(tf->tf_cs != USER_CS) {
+        		cprintf("+++ Typing number 3: SUCCESSFULLY! now switch to user mode +++\n");
+        		tf->tf_cs = USER_CS;
+        		tf->tf_ds = tf->tf_ss = tf->tf_es = USER_DS;
+        		tf->tf_eflags |= FL_IOPL_MASK;
+        	}
+        	else {
+        		cprintf("+++ Typing number 3: SORRY! you are being user mode now +++\n");
+        	}
+        }
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
+    	if(tf->tf_cs != USER_CS) {
+       		tf->tf_cs = USER_CS;
+       		tf->tf_ds = tf->tf_ss = tf->tf_es = USER_DS;
+       		tf->tf_eflags |= FL_IOPL_MASK;
+       	}
+       	break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+       	if(tf->tf_cs != KERNEL_CS) {
+       		tf->tf_cs = KERNEL_CS;
+       		tf->tf_ds = tf->tf_ss = tf->tf_es = KERNEL_DS;
+       	}
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:

@@ -365,7 +365,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *
     */
 #if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
+    /*LAB3 EXERCISE 1: 2016011384*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     if (*ptep == 0) {
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
@@ -396,7 +396,35 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
-   ret = 0;
+    ptep = get_pte(mm->pgdir, addr, 1);
+    if(ptep == NULL) {
+    	cprintf("do_pgfault failed: cannot pte from get_pte\n");
+    	goto failed;
+    }
+
+    if(*ptep == 0) {
+    	if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL ) {
+    		cprintf("do_pgfault failed: cannot page from pgdir_alloc_page\n");
+    		goto failed;
+    	}
+    }
+    else {
+    	if(swap_init_ok) {
+    		struct Page *page=NULL;
+    		if ((ret = swap_in(mm, addr, &page)) != 0) {
+    			cprintf("do_pgfault failed: swap_in in do_pgfault failed\n");
+    			goto failed;
+    		}
+    		page_insert(mm->pgdir, page, addr, perm);
+    		swap_map_swappable(mm, addr, page, 1);
+    		page->pra_vaddr = addr;
+    	}
+    	else {
+    		cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+    		goto failed;
+    	}
+    }
+   	ret = 0;
 failed:
     return ret;
 }
